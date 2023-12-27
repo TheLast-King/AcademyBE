@@ -1,41 +1,69 @@
 const express = require('express');
-const app = express();
+const jwt = require('jsonwebtoken');
 const cors = require('cors');
 
-// Mock user data
-const users = [
-  { id: 1, username: 'user1', password: 'password1' },
-  { id: 2, username: 'user2', password: 'password2' }
-];
-
+const app = express();
 app.use(cors());
 app.use(express.json());
 
+const users = [
+  { id: 1, username: 'admin', password: 'admin123', role: 'admin' },
+  { id: 2, username: 'teacher', password: 'teacher123', role: 'teacher' },
+  { id: 3, username: 'student', password:'student123', role: 'student' },
+];
 
-
-app.get('/users', (req,res) => {
-    return res.status(200).json({users});
-})
-
-
-// Login endpoint
 app.post('/login', (req, res) => {
-    const { username, password } = req.body;
-  
-    if (!username || !password) {
-      return res.status(400).json({ message: 'Username and password are required.' });
+  const { username, password } = req.body;
+  const user = users.find((u) => u.username === username);
+
+  if (!user || user.password !== password) {
+    return res.status(401).json({ message: 'Invalid credentials' });
+  }
+
+  const token = jwt.sign(
+    {
+      username: user.username,
+      role: user.role,
+      name: user.name,
+      type: user.type,
+      roleId: user.id,
+    },
+    'secret_key'
+  );
+  res.json({ token });
+});
+
+const authMiddleware = (req, res, next) => {
+  const token = req.headers.authorization;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Token not provided' });
+  }
+
+  jwt.verify(token, 'secret_key', (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ message: 'Failed to authenticate token' });
     }
-  
-    // For simplicity, using a hard-coded check in this example
-    if (username === 'user1' && password === 'password1') {
-      return res.status(200).json({ message: 'Login successful!' });
-    } else {
-      return res.status(401).json({ message: 'Invalid username or password.' });
-    }
+
+    req.user = decoded;
+    next();
   });
-  
+};
 
+app.get('/users', authMiddleware, (req, res) => {
+  const { role } = req.user;
+  if (role !== 'admin' && role !== 'teacher') {
+    return res.status(403).json({ message: 'Unauthenticated User' });
+  }
 
+  const { name, type, roleId } = req.user;
+  res.json({ message: 'Access granted', role, name, type, roleId });
+});
+
+app.post('/signout', (req, res) => {
+  // Optionally handle sign-out logic here
+  res.json({ message: 'Signed out successfully' });
+});
 
 const PORT = 3000;
 app.listen(PORT, () => {
